@@ -2,7 +2,7 @@
 // @name         PH - COMMAND CENTER v11.3 (Cauldron Update)
 // @version      11.3
 // @description  Master interface for all bots. Fixed for Opera GX. Added Gem Cauldron.
-// @author       warpKaiba & Domodoco (Architecture by AI)
+// @author       warpKaiba & Domodoco & SilentHex
 // @match        https://pokeheroes.com/*
 // @grant        none
 // @run-at       document-start
