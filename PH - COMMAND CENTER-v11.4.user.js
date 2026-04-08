@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         PH - COMMAND CENTER v11.3 (Cauldron Update)
-// @version      11.3
-// @description  Master interface for all bots. Fixed for Opera GX. Added Gem Cauldron.
-// @author       warpKaiba & Domodoco & SilentHex
+// @name         PH - COMMAND CENTER v11.4
+// @version      11.4
+// @description  Master interface for all bots. Gem Cauldron moved to manual actions. Fixed for Opera GX.
+// @author       warpKaiba & Domodoco (Architecture by AI)
 // @match        https://pokeheroes.com/*
 // @grant        none
 // @run-at       document-start
@@ -41,8 +41,8 @@
     // Only run UI on Homepage
     if (!window.location.href.includes('index') && window.location.href !== 'https://pokeheroes.com/') return;
 
-    // Default toggle states
-    const TOGGLES = ['PH_CC_CLICKER_ACTIVE', 'PH_CC_HANGMAN_ACTIVE', 'PH_CC_HOL_ACTIVE', 'RT_AutoRun', 'PH_HATCH_LOOP_RUNNING', 'PH_HT_RUNNING', 'PH_BL_RUN', 'PH_CC_CAULDRON_ACTIVE'];
+    // Default toggle states (Cauldron automation removed)
+    const TOGGLES = ['PH_CC_CLICKER_ACTIVE', 'PH_CC_HANGMAN_ACTIVE', 'PH_CC_HOL_ACTIVE', 'RT_AutoRun', 'PH_HATCH_LOOP_RUNNING', 'PH_HT_RUNNING', 'PH_BL_RUN'];
     TOGGLES.forEach(key => { if (!localStorage.getItem(key)) localStorage.setItem(key, 'false'); });
 
     if (!localStorage.getItem('PH_HATCH_LOOP_TARGET')) localStorage.setItem('PH_HATCH_LOOP_TARGET', 'lab');
@@ -71,37 +71,53 @@
     // SECTION 2: PAYLOADS
     // =========================================================================
 
-    // --- GEM CAULDRON PAYLOAD ---
     function payloadCauldron() {
+        var cauldronInterval = null;
         var lastGem = -1;
 
-        // Interval maintained to bypass detection
-        var cauldronInterval = setInterval(function() {
-            if (localStorage.getItem('PH_CC_CAULDRON_ACTIVE') !== 'true') return;
+        window.addEventListener('message', function(event) {
+            if (event.origin !== TARGET_ORIGIN) return;
 
-            // Access page global displayedGem securely
-            var currentGemIndex = typeof window.displayedGem !== 'undefined' ? window.displayedGem : -1;
+            if (event.data && event.data.type === 'CAULDRON_SOLVE') {
+                if (cauldronInterval) clearInterval(cauldronInterval);
+                lastGem = -1;
+                try { window.parent.postMessage({ type: 'STATUS', id: window.name, msg: 'Solving Gems...' }, TARGET_ORIGIN); } catch(e){}
 
-            if (currentGemIndex >= 0 && lastGem < currentGemIndex) {
-                var wantedGems = document.querySelectorAll("[style*='margin-left: 106px']");
-                if (wantedGems[currentGemIndex]) {
-                    getPixelFrom(wantedGems[currentGemIndex].src);
-                    lastGem = currentGemIndex;
-                }
+                cauldronInterval = setInterval(function() {
+                    var currentGemIndex = typeof window.displayedGem !== 'undefined' ? window.displayedGem : -1;
+                    if (currentGemIndex >= 0 && lastGem < currentGemIndex) {
+                        var wantedGems = document.querySelectorAll("[style*='margin-left: 106px']");
+                        if (wantedGems[currentGemIndex]) {
+                            getPixelFrom(wantedGems[currentGemIndex].src);
+                            lastGem = currentGemIndex;
+                        }
+                    }
+                    if (currentGemIndex >= 9) { // 10th gem placed
+                        clearInterval(cauldronInterval);
+                        cauldronInterval = null;
+                        try { window.parent.postMessage({ type: 'STATUS', id: window.name, msg: 'Gems Ready!' }, TARGET_ORIGIN); } catch(e){}
+                    }
+                }, 300);
             }
-        }, 300);
+
+            if (event.data && event.data.type === 'CAULDRON_BOIL') {
+                if (cauldronInterval) clearInterval(cauldronInterval);
+                try { window.parent.postMessage({ type: 'STATUS', id: window.name, msg: 'Boiling Mega...' }, TARGET_ORIGIN); } catch(e){}
+                window.location.href = "https://pokeheroes.com/gem_cauldron?boil=10";
+            }
+        });
 
         function getPixelFrom(gemg) {
             var img = new Image();
             var canvas = document.createElement('canvas');
-            img.crossOrigin = "Anonymous"; // Canvas Taint protection
+            img.crossOrigin = "Anonymous";
             img.onload = function() {
                 canvas.width = img.width;
                 canvas.height = img.height;
                 var ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, img.width, img.height);
                 var pixelData = ctx.getImageData(40, 45, 1, 1).data;
-                clickGem(pixelData.join(',')); // Convert Uint8ClampedArray to string
+                clickGem(pixelData.join(','));
             };
             img.src = gemg.endsWith('.png') ? gemg : gemg + ".png";
         }
@@ -130,15 +146,12 @@
             }
         }
 
-        // Parent Status Reporting
         setInterval(() => {
-            let msg = 'Ready (Need Start)';
-            const shouldRun = localStorage.getItem('PH_CC_CAULDRON_ACTIVE') === 'true';
-
-            if (!shouldRun) msg = 'PAUSED';
-            else if (typeof window.displayedGem !== 'undefined' && window.displayedGem > 0) msg = 'Brewing: ' + window.displayedGem + '/10';
-
-            try { window.parent.postMessage({ type: 'STATUS', id: window.name, msg: msg }, TARGET_ORIGIN); } catch(e){}
+            if (!cauldronInterval) {
+                let msg = 'Ready (Manual)';
+                if (typeof window.displayedGem !== 'undefined' && window.displayedGem > 0) msg = 'Brewing: ' + window.displayedGem + '/10';
+                try { window.parent.postMessage({ type: 'STATUS', id: window.name, msg: msg }, TARGET_ORIGIN); } catch(e){}
+            }
         }, 2000);
     }
 
@@ -1035,7 +1048,6 @@
             .ph-title { font-size: 24px; font-weight: 800; color: #60a5fa; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; }
             .ph-section-title { font-size: 14px; font-weight: 600; color: #9ca3af; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #374151; padding-bottom: 5px; }
 
-            /* Toggles Grid */
             .ph-toggles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
             .ph-toggle-card { background: #1f2937; border: 1px solid #374151; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 
@@ -1051,6 +1063,7 @@
             .ph-btn-action { background: #f59e0b; color: #000; border: none; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.2s; width: 100%; text-align: center; }
             .ph-btn-action.purple { background: #8b5cf6; color: white; }
             .ph-btn-action.red { background: #ef4444; color: white; }
+            .ph-btn-action.teal { background: #20b2aa; color: white; }
             .ph-btn-action:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
             .ph-modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 15px;}
@@ -1075,7 +1088,7 @@
         const html = `
             <div id="ph-command-ui">
                 <div class="ph-header">
-                    <h1 class="ph-title">PH COMMAND CENTER v11.3</h1>
+                    <h1 class="ph-title">PH COMMAND CENTER v11.4</h1>
                     <button id="ph-btn-bootall" class="ph-btn-action red" style="width: auto; padding: 10px 20px;">⚡ BOOT ALL WORKERS</button>
                 </div>
 
@@ -1104,13 +1117,12 @@
                     <div class="ph-toggle-card">
                         <button id="ph-btn-berry" class="ph-btn-main">BERRY GARDEN</button>
                     </div>
-                    <div class="ph-toggle-card">
-                        <button id="ph-btn-cauldron" class="ph-btn-main">CAULDRON</button>
-                    </div>
                 </div>
 
                 <div class="ph-section-title">Manual Actions</div>
                 <div class="ph-toggles-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+                    <div class="ph-toggle-card"><button id="ph-btn-caul-solve" class="ph-btn-action teal">🧪 AUTO-ADD GEMS</button></div>
+                    <div class="ph-toggle-card"><button id="ph-btn-caul-boil" class="ph-btn-action red">🔥 BOIL MEGA</button></div>
                     <div class="ph-toggle-card"><button id="ph-btn-fish" class="ph-btn-action">🎣 CATCH FISH</button></div>
                     <div class="ph-toggle-card"><button id="ph-btn-slot" class="ph-btn-action purple">🎰 BLAST SLOT</button></div>
                 </div>
@@ -1151,7 +1163,6 @@
         setBtnStyle('ph-btn-hatch', localStorage.getItem('PH_HATCH_LOOP_RUNNING') === 'true', 'HATCHER');
         setBtnStyle('ph-btn-honey', localStorage.getItem('PH_HT_RUNNING') === 'true', 'HONEY');
         setBtnStyle('ph-btn-berry', localStorage.getItem('PH_BL_RUN') === 'true', 'BERRY');
-        setBtnStyle('ph-btn-cauldron', localStorage.getItem('PH_CC_CAULDRON_ACTIVE') === 'true', 'CAULDRON');
 
         document.getElementById('ph-btn-hatch-tgt').innerText = localStorage.getItem('PH_HATCH_LOOP_TARGET') === 'grass' ? 'TGT: GRASS' : 'TGT: LAB';
         document.getElementById('ph-btn-honey-type').innerText = localStorage.getItem('PH_HT_TYPE') === 'super' ? '🍓 SUPER' : '🍯 NORMAL';
@@ -1163,7 +1174,6 @@
         document.getElementById('ph-btn-hatch').onclick = () => { const c = localStorage.getItem('PH_HATCH_LOOP_RUNNING') === 'true'; localStorage.setItem('PH_HATCH_LOOP_RUNNING', !c); setBtnStyle('ph-btn-hatch', !c, 'HATCHER'); };
         document.getElementById('ph-btn-honey').onclick = () => { const c = localStorage.getItem('PH_HT_RUNNING') === 'true'; localStorage.setItem('PH_HT_RUNNING', !c); setBtnStyle('ph-btn-honey', !c, 'HONEY'); };
         document.getElementById('ph-btn-berry').onclick = () => { const c = localStorage.getItem('PH_BL_RUN') === 'true'; localStorage.setItem('PH_BL_RUN', !c); setBtnStyle('ph-btn-berry', !c, 'BERRY'); };
-        document.getElementById('ph-btn-cauldron').onclick = () => { const c = localStorage.getItem('PH_CC_CAULDRON_ACTIVE') === 'true'; localStorage.setItem('PH_CC_CAULDRON_ACTIVE', !c); setBtnStyle('ph-btn-cauldron', !c, 'CAULDRON'); };
 
         document.getElementById('ph-btn-hatch-tgt').onclick = (e) => {
             const isLab = localStorage.getItem('PH_HATCH_LOOP_TARGET') !== 'grass';
@@ -1175,6 +1185,21 @@
             const isNorm = localStorage.getItem('PH_HT_TYPE') !== 'super';
             localStorage.setItem('PH_HT_TYPE', isNorm ? 'super' : 'normal');
             e.target.innerText = isNorm ? '🍓 SUPER' : '🍯 NORMAL';
+        };
+
+        // --- NEW CAULDRON BUTTONS ---
+        document.getElementById('ph-btn-caul-solve').onclick = () => {
+            const f = document.getElementById('w_caul');
+            if (f && f.contentWindow) {
+                f.contentWindow.postMessage({ type: 'CAULDRON_SOLVE' }, TARGET_ORIGIN);
+            } else alert("Boot up 'Gem Cauldron' frame first!");
+        };
+
+        document.getElementById('ph-btn-caul-boil').onclick = () => {
+            const f = document.getElementById('w_caul');
+            if (f && f.contentWindow) {
+                f.contentWindow.postMessage({ type: 'CAULDRON_BOIL' }, TARGET_ORIGIN);
+            } else alert("Boot up 'Gem Cauldron' frame first!");
         };
 
         document.getElementById('ph-btn-fish').onclick = () => {
@@ -1226,7 +1251,7 @@
                 if (el) {
                     el.innerText = event.data.msg;
                     if (event.data.msg.includes('PAUSED') || event.data.msg.includes('Out of')) el.style.color = '#ef4444';
-                    else if (event.data.msg.includes('Running') || event.data.msg.includes('Active') || event.data.msg.includes('Found!') || event.data.msg.includes('Brewing')) el.style.color = '#10b981';
+                    else if (event.data.msg.includes('Running') || event.data.msg.includes('Active') || event.data.msg.includes('Found!') || event.data.msg.includes('Ready') || event.data.msg.includes('Solving')) el.style.color = '#10b981';
                     else if (event.data.msg.includes('Sleep') || event.data.msg.includes('Wait') || event.data.msg.includes('Idle')) el.style.color = '#6b7280';
                     else el.style.color = '#60a5fa';
                 }
